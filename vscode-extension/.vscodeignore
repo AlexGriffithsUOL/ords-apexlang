@@ -1,0 +1,9 @@
+src/**
+test/**
+out/test/**
+out/src/build.*
+**/*.map
+tsconfig.json
+node_modules/**
+.vscode/**
+*.vsix

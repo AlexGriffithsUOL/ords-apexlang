@@ -1,0 +1,193 @@
+(* ORDS APEXlang: Oracle REST Data Services modules in APEXlang syntax.
+
+   This file is the specification. The VS Code extension reads it for
+   highlighting, completion, hovers and validation, and the Python converter's
+   tests check that its mapping agrees with it.
+
+   Syntax conventions
+   <nl> is significant: component declarations, groups, properties, and closing delimiters are line-oriented.
+   [ X ] means optional X. { X } means zero or more X. A | B means either A or B.
+
+   Documentation conventions (read by tools)
+   - A component rule is preceded by a comment whose first line is the
+     component kind, second line "ORDS.PROCEDURE; id is p_param", then a
+     description.
+   - A property alternative ends with a comment "p_param: description".
+     "-" in place of p_param means the property has no ORDS parameter.
+*)
+
+(* Core layout and values: from Oracle's apexlang.ebnf (APEX 26.1), UPL-1.0 *)
+<nl> ::= "\n" | "\r\n"
+<blank-lines> ::= { <nl> }
+<ws> ::= { " " | "\t" }
+<required-ws> ::= " " { " " | "\t" } | "\t" { " " | "\t" }
+<indent> ::= { " " | "\t" }
+<line-end> ::= <nl>
+<program> ::= <blank-lines> { <component-declaration> <blank-lines> }
+<component-declaration> ::= <indent> <known-component> <line-end>
+<value> ::= <string> | <identifier> | <boolean> | <number> | <reference> | <multiline-string> | <array>
+<string-like-value> ::= <string> | <identifier>
+<component-id> ::= <string> | <identifier> | <number>
+<identifier> ::= <identifier-start> { <identifier-rest> }
+<identifier-start> ::= "A".."Z" | "a".."z" | "0".."9" | "_"
+<identifier-rest> ::= <identifier-start> | "." | "-"
+<string> ::= "\"" { <string-character> | <escape> } "\""
+<multiline-string> ::= "```" { <any-character> | <nl> } "```"
+<reference> ::= "@" { <reference-character> }
+<boolean> ::= "true" | "false"
+<number> ::= [ "-" ] <digit> { <digit> } [ "." <digit> { <digit> } ]
+<array> ::= <array-of-value>
+<array-separator> ::= <required-ws> | <line-end> <indent>
+<array-of-value> ::= "[" [ <ws> <value> { <array-separator> <value> } <ws> | <line-end> { <indent> <value> <line-end> } <indent> ] "]"
+<comment> ::= "//" { <any-character-except-newline> } <line-end> | "/*" { <any-character> | <nl> } "*/"
+<digit> ::= "0".."9"
+<escape> ::= "\\" ( "\"" | "\\" | "/" | "b" | "f" | "n" | "r" | "t" | "u" <hex> <hex> <hex> <hex> )
+<hex> ::= <digit> | "A".."F" | "a".."f"
+<known-component> ::= <component>
+
+(* Divergences from apexlang.ebnf, matching Oracle's published example applications:
+   - an unquoted <string-like-value> runs to the end of the line, so `label: HR API` is one value
+   - a <multiline-string> may start on the line after its property name
+   An enum also accepts a quoted <string>, which is passed to ORDS unchanged. *)
+
+(* ORDS additions *)
+<text> ::= <string-like-value> | <multiline-string>
+<code> ::= <multiline-string> | <string>
+<name> ::= <string-like-value> | <reference>
+<array-of-name> ::= "[" [ <ws> <name> { <array-separator> <name> } <ws> | <line-end> { <indent> <name> <line-end> } <indent> ] "]"
+<camel-case-name> ::= "a".."z" { "a".."z" | "A".."Z" | "0".."9" }
+(* A property not listed for a component is passed through as an ORDS
+   parameter (fooBar -> p_foo_bar), so new ORDS parameters need no grammar
+   change. Tools warn about these, since they are usually typos. *)
+<pass-through-property> ::= <camel-case-name> ":" <ws> <value>
+
+(* Component index *)
+<component> ::= <rest-schema>
+  | <rest-module>
+  | <rest-role>
+  | <rest-privilege>
+  | <rest-enabled-object>
+  | <plsql>
+
+(* restSchema
+   ORDS.ENABLE_SCHEMA; id is p_schema
+   Enables the schema for REST and sets the URL prefix all its modules are
+   published under. The id is the schema name; leave it out for the current schema. *)
+<rest-schema> ::= "restSchema" [ <required-ws> <component-id> ] <ws> "(" <line-end> { <rest-schema-body-line> } <indent> ")" <line-end>
+<rest-schema-body-line> ::= <rest-schema-property-line>
+  | <rest-schema-url-mapping>
+<rest-schema-property-line> ::= <indent> <rest-schema-property> <line-end>
+<rest-schema-property> ::= "enabled" ":" <ws> <boolean> (* p_enabled: Whether REST access to the schema is enabled. *)
+  | "autoRestAuth" ":" <ws> <boolean> (* p_auto_rest_auth: Whether the schema's metadata catalog requires authorization. *)
+  | <pass-through-property>
+<rest-schema-url-mapping> ::= <indent> "urlMapping" <ws> "{" <line-end> { <indent> <rest-schema-url-mapping-property> <line-end> } <indent> "}" <line-end>
+<rest-schema-url-mapping-property> ::= "type" ":" <ws> ( "basePath" | "baseUrl" | <string> ) (* p_url_mapping_type: How requests are mapped to the schema: a path segment (basePath) or a whole base URL (baseUrl). *)
+  | "pattern" ":" <ws> <text> (* p_url_mapping_pattern: The path segment or base URL, e.g. hr. *)
+
+(* restModule
+   ORDS.DEFINE_MODULE; id is p_module_name
+   A REST module: a set of URL templates published under one base path.
+   The id is the module name. *)
+<rest-module> ::= "restModule" <required-ws> <component-id> <ws> "(" <line-end> { <rest-module-body-line> } <indent> ")" <line-end>
+<rest-module-body-line> ::= <rest-module-property-line>
+  | <template>
+<rest-module-property-line> ::= <indent> <rest-module-property> <line-end>
+<rest-module-property> ::= "basePath" ":" <ws> <text> (* p_base_path: Path of the module under the schema's URL, e.g. /hr/v1/. *)
+  | "itemsPerPage" ":" <ws> <number> (* p_items_per_page: Default page size for collection handlers in this module. *)
+  | "status" ":" <ws> ( "published" | "notPublished" | <string> ) (* p_status: Whether the module is published. *)
+  | "originsAllowed" ":" <ws> <text> (* p_origins_allowed: Comma-separated origins allowed to make cross-origin (CORS) requests. Set with ORDS.SET_MODULE_ORIGINS_ALLOWED. *)
+  | "comments" ":" <ws> <text> (* p_comments: Free-text comments. *)
+  | <pass-through-property>
+
+(* template
+   ORDS.DEFINE_TEMPLATE; id is p_pattern
+   A URL pattern within a module, e.g. "employees/:id". Bind variables in the
+   pattern (:id) are available to the handlers. *)
+<template> ::= "template" <required-ws> <component-id> <ws> "(" <line-end> { <template-body-line> } <indent> ")" <line-end>
+<template-body-line> ::= <template-property-line>
+  | <template-etag>
+  | <handler>
+<template-property-line> ::= <indent> <template-property> <line-end>
+<template-property> ::= "priority" ":" <ws> <number> (* p_priority: Evaluation order when more than one pattern matches a URL; 0 (low) to 9 (high). *)
+  | "comments" ":" <ws> <text> (* p_comments: Free-text comments. *)
+  | <pass-through-property>
+<template-etag> ::= <indent> "etag" <ws> "{" <line-end> { <indent> <template-etag-property> <line-end> } <indent> "}" <line-end>
+<template-etag-property> ::= "type" ":" <ws> ( "hash" | "query" | "none" | <string> ) (* p_etag_type: How the entity tag is computed: a hash of the response, a query, or none. *)
+  | "query" ":" <ws> <code> (* p_etag_query: Query whose result is the entity tag, when type is query. *)
+
+(* handler
+   ORDS.DEFINE_HANDLER; id is p_method
+   Serves one HTTP method on a template. The id is the method: GET, POST, PUT
+   or DELETE. *)
+<handler> ::= "handler" <required-ws> <component-id> <ws> "(" <line-end> { <handler-body-line> } <indent> ")" <line-end>
+<handler-body-line> ::= <handler-property-line>
+  | <handler-source>
+  | <parameter>
+<handler-property-line> ::= <indent> <handler-property> <line-end>
+<handler-property> ::= "itemsPerPage" ":" <ws> <number> (* p_items_per_page: Page size for collection results; overrides the module's. *)
+  | "mimesAllowed" ":" <ws> <text> (* p_mimes_allowed: Comma-separated MIME types the request body may have. *)
+  | "comments" ":" <ws> <text> (* p_comments: Free-text comments. *)
+  | <pass-through-property>
+<handler-source> ::= <indent> "source" <ws> "{" <line-end> { <indent> <handler-source-property> <line-end> } <indent> "}" <line-end>
+<handler-source-property> ::= "type" ":" <ws> ( "collection" | "item" | "query" | "queryOneRow" | "csvQuery" | "plsql" | "media" | <string> ) (* p_source_type: What the handler runs and how the result is returned. collection: json/collection, item: json/item, query: json/query, queryOneRow: json/query;type=single_row, csvQuery: csv/query, plsql: plsql/block, media: resource/lob. *)
+  | "sqlQuery" ":" <ws> <code> (* p_source: The SQL query the handler runs. *)
+  | "plsqlCode" ":" <ws> <code> (* p_source: The PL/SQL block the handler runs, when type is plsql. *)
+
+(* parameter
+   ORDS.DEFINE_PARAMETER; id is p_name
+   Binds a request header, response header or URI value to a bind variable
+   of the handler. The id is the header or query parameter name. *)
+<parameter> ::= "parameter" <required-ws> <component-id> <ws> "(" <line-end> { <parameter-body-line> } <indent> ")" <line-end>
+<parameter-body-line> ::= <parameter-property-line>
+<parameter-property-line> ::= <indent> <parameter-property> <line-end>
+<parameter-property> ::= "bindVariable" ":" <ws> <text> (* p_bind_variable_name: Bind variable in the handler source, without the colon. *)
+  | "source" ":" <ws> ( "header" | "response" | "uri" | <string> ) (* p_source_type: Where the value comes from or goes to. *)
+  | "type" ":" <ws> ( "string" | "int" | "double" | "boolean" | "long" | "timestamp" | "resultset" | <string> ) (* p_param_type: Data type of the value. *)
+  | "accessMethod" ":" <ws> ( "in" | "out" | "inout" | <string> ) (* p_access_method: Whether the value is read from the request, written to the response, or both. *)
+  | "comments" ":" <ws> <text> (* p_comments: Free-text comments. *)
+  | <pass-through-property>
+
+(* restRole
+   ORDS.CREATE_ROLE; id is p_role_name
+   A role that privileges can require. The id is the role name. *)
+<rest-role> ::= "restRole" <required-ws> <component-id> <ws> "(" <line-end> { <rest-role-body-line> } <indent> ")" <line-end>
+<rest-role-body-line> ::= <rest-role-property-line>
+<rest-role-property-line> ::= <indent> <rest-role-property> <line-end>
+<rest-role-property> ::= <pass-through-property>
+
+(* restPrivilege
+   ORDS.DEFINE_PRIVILEGE; id is p_privilege_name
+   Protects modules and URL patterns: callers need one of the roles.
+   The id is the privilege name. *)
+<rest-privilege> ::= "restPrivilege" <required-ws> <component-id> <ws> "(" <line-end> { <rest-privilege-body-line> } <indent> ")" <line-end>
+<rest-privilege-body-line> ::= <rest-privilege-property-line>
+<rest-privilege-property-line> ::= <indent> <rest-privilege-property> <line-end>
+<rest-privilege-property> ::= "label" ":" <ws> <text> (* p_label: Name shown to users when they are asked to approve access. *)
+  | "description" ":" <ws> <text> (* p_description: Description shown to users when they are asked to approve access. *)
+  | "roles" ":" <ws> <array-of-name> (* p_roles: Roles that grant this privilege. Refer to a restRole in this file with @name. *)
+  | "modules" ":" <ws> <array-of-name> (* p_modules: Modules this privilege protects. Refer to a restModule in this file with @name. *)
+  | "patterns" ":" <ws> <array-of-name> (* p_patterns: URL patterns this privilege protects, e.g. "/hr/v1/employees/*". Also set by ORDS.CREATE_PRIVILEGE_MAPPING. *)
+  | "comments" ":" <ws> <text> (* p_comments: Free-text comments. *)
+  | <pass-through-property>
+
+(* restEnabledObject
+   ORDS.ENABLE_OBJECT; id is p_object
+   Publishes a table, view or PL/SQL object through AutoREST. The id is the
+   object name. *)
+<rest-enabled-object> ::= "restEnabledObject" <required-ws> <component-id> <ws> "(" <line-end> { <rest-enabled-object-body-line> } <indent> ")" <line-end>
+<rest-enabled-object-body-line> ::= <rest-enabled-object-property-line>
+<rest-enabled-object-property-line> ::= <indent> <rest-enabled-object-property> <line-end>
+<rest-enabled-object-property> ::= "schema" ":" <ws> <text> (* p_schema: Schema that owns the object; defaults to the current schema. *)
+  | "type" ":" <ws> ( "table" | "view" | "package" | "procedure" | "function" | <string> ) (* p_object_type: Kind of database object. *)
+  | "alias" ":" <ws> <text> (* p_object_alias: Name of the object in the URL. *)
+  | "enabled" ":" <ws> <boolean> (* p_enabled: Whether AutoREST access is enabled. *)
+  | "autoRestAuth" ":" <ws> <boolean> (* p_auto_rest_auth: Whether access requires authorization. *)
+  | "comments" ":" <ws> <text> (* p_comments: Free-text comments. *)
+  | <pass-through-property>
+
+(* plsql
+   -; id is -
+   A statement the converter does not model, such as OAUTH.CREATE_CLIENT, kept
+   verbatim and run in place. *)
+<plsql> ::= "plsql" <ws> "(" <line-end> <indent> <plsql-property> <line-end> <indent> ")" <line-end>
+<plsql-property> ::= "code" ":" <ws> <code> (* -: The PL/SQL statement, including its trailing semicolon. *)

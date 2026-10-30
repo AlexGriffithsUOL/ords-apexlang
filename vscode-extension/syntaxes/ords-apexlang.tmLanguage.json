@@ -1,0 +1,249 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "ORDS APEXlang",
+  "scopeName": "source.apx-ords",
+  "comment": "Generated from grammar/ords-apexlang.ebnf by `npm run build`. Do not edit.",
+  "patterns": [
+    {
+      "include": "#comment"
+    },
+    {
+      "include": "#fence"
+    },
+    {
+      "match": "^\\s*(restEnabledObject|restPrivilege|restSchema|restModule|parameter|template|restRole|handler|plsql)(?:\\s+(\"(?:[^\"\\\\]|\\\\.)*\"|[A-Za-z0-9_][A-Za-z0-9_.\\-]*))?\\s*(\\()\\s*$",
+      "captures": {
+        "1": {
+          "name": "keyword.other.component.apx-ords"
+        },
+        "2": {
+          "name": "entity.name.type.component-id.apx-ords"
+        },
+        "3": {
+          "name": "punctuation.section.parens.begin.apx-ords"
+        }
+      }
+    },
+    {
+      "match": "^\\s*([A-Za-z][A-Za-z0-9]*)(?:\\s+(\"(?:[^\"\\\\]|\\\\.)*\"|[A-Za-z0-9_][A-Za-z0-9_.\\-]*))?\\s*(\\()\\s*$",
+      "captures": {
+        "1": {
+          "name": "variable.other.unknown-component.apx-ords"
+        },
+        "2": {
+          "name": "entity.name.type.component-id.apx-ords"
+        },
+        "3": {
+          "name": "punctuation.section.parens.begin.apx-ords"
+        }
+      }
+    },
+    {
+      "match": "^\\s*(urlMapping|source|etag)\\s*(\\{)\\s*$",
+      "captures": {
+        "1": {
+          "name": "storage.type.group.apx-ords"
+        },
+        "2": {
+          "name": "punctuation.section.braces.begin.apx-ords"
+        }
+      }
+    },
+    {
+      "match": "^\\s*([A-Za-z][A-Za-z0-9]*)\\s*(\\{)\\s*$",
+      "captures": {
+        "1": {
+          "name": "variable.other.unknown-group.apx-ords"
+        },
+        "2": {
+          "name": "punctuation.section.braces.begin.apx-ords"
+        }
+      }
+    },
+    {
+      "begin": "^\\s*(originsAllowed|autoRestAuth|itemsPerPage|mimesAllowed|bindVariable|accessMethod|description|plsqlCode|basePath|comments|priority|sqlQuery|patterns|enabled|pattern|modules|status|source|schema|query|label|roles|alias|type|code)(:)(?:[ \\t]+|$)",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "support.type.property-name.apx-ords"
+        },
+        "2": {
+          "name": "punctuation.separator.key-value.apx-ords"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#value"
+        }
+      ]
+    },
+    {
+      "begin": "^\\s*([A-Za-z][A-Za-z0-9]*)(:)(?:[ \\t]+|$)",
+      "end": "$",
+      "beginCaptures": {
+        "1": {
+          "name": "variable.other.property.apx-ords"
+        },
+        "2": {
+          "name": "punctuation.separator.key-value.apx-ords"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#value"
+        }
+      ]
+    },
+    {
+      "match": "^\\s*\\)\\s*$",
+      "name": "punctuation.section.parens.end.apx-ords"
+    },
+    {
+      "match": "^\\s*\\}\\s*$",
+      "name": "punctuation.section.braces.end.apx-ords"
+    }
+  ],
+  "repository": {
+    "comment": {
+      "patterns": [
+        {
+          "match": "^\\s*//.*$",
+          "name": "comment.line.double-slash.apx-ords"
+        },
+        {
+          "begin": "^\\s*/\\*",
+          "end": "\\*/",
+          "name": "comment.block.apx-ords"
+        }
+      ]
+    },
+    "fence": {
+      "patterns": [
+        {
+          "begin": "^\\s*(\\x60\\x60\\x60)(sql|plsql)\\s*$",
+          "end": "^\\s*(\\x60\\x60\\x60)\\s*$",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.fence.apx-ords"
+            },
+            "2": {
+              "name": "entity.name.tag.language.apx-ords"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.fence.apx-ords"
+            }
+          },
+          "contentName": "meta.embedded.block.sql",
+          "patterns": [
+            {
+              "include": "source.sql"
+            }
+          ]
+        },
+        {
+          "begin": "^\\s*(\\x60\\x60\\x60)(\\w*)\\s*$",
+          "end": "^\\s*(\\x60\\x60\\x60)\\s*$",
+          "beginCaptures": {
+            "1": {
+              "name": "punctuation.definition.fence.apx-ords"
+            },
+            "2": {
+              "name": "entity.name.tag.language.apx-ords"
+            }
+          },
+          "endCaptures": {
+            "1": {
+              "name": "punctuation.definition.fence.apx-ords"
+            }
+          },
+          "contentName": "string.unquoted.block.apx-ords"
+        }
+      ]
+    },
+    "string": {
+      "begin": "\"",
+      "end": "\"",
+      "name": "string.quoted.double.apx-ords",
+      "patterns": [
+        {
+          "match": "\\\\(?:[\"\\\\/bfnrt]|u[0-9A-Fa-f]{4})",
+          "name": "constant.character.escape.apx-ords"
+        }
+      ]
+    },
+    "reference": {
+      "match": "@(?:\"(?:[^\"\\\\]|\\\\.)*\"|[^\\s\\]]+)",
+      "name": "variable.other.constant.reference.apx-ords"
+    },
+    "value": {
+      "patterns": [
+        {
+          "match": "\\s*(true|false)\\s*$",
+          "captures": {
+            "1": {
+              "name": "constant.language.boolean.apx-ords"
+            }
+          }
+        },
+        {
+          "match": "\\s*(-?\\d+(?:\\.\\d+)?)\\s*$",
+          "captures": {
+            "1": {
+              "name": "constant.numeric.apx-ords"
+            }
+          }
+        },
+        {
+          "match": "\\s*(notPublished|queryOneRow|collection|published|timestamp|resultset|procedure|basePath|csvQuery|response|function|baseUrl|boolean|package|header|string|double|query|plsql|media|inout|table|hash|none|item|long|view|uri|int|out|in)\\s*$",
+          "captures": {
+            "1": {
+              "name": "support.constant.enum.apx-ords"
+            }
+          }
+        },
+        {
+          "include": "#string"
+        },
+        {
+          "include": "#reference"
+        },
+        {
+          "begin": "\\[",
+          "end": "\\]",
+          "beginCaptures": {
+            "0": {
+              "name": "punctuation.definition.array.begin.apx-ords"
+            }
+          },
+          "endCaptures": {
+            "0": {
+              "name": "punctuation.definition.array.end.apx-ords"
+            }
+          },
+          "patterns": [
+            {
+              "include": "#string"
+            },
+            {
+              "include": "#reference"
+            },
+            {
+              "match": "[^\\s\\]\"@]+",
+              "name": "string.unquoted.apx-ords"
+            }
+          ]
+        },
+        {
+          "match": "\\s*(\\S.*?)\\s*$",
+          "captures": {
+            "1": {
+              "name": "string.unquoted.apx-ords"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

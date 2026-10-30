@@ -1,0 +1,15 @@
+[project]
+name = "ords2apx"
+version = "0.1.0"
+description = "Convert ORDS REST export scripts to APEXlang-style .apx files and back"
+requires-python = ">=3.10"
+
+[project.scripts]
+ords2apx = "ords2apx.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["ords2apx"]

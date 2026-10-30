@@ -1,0 +1,65 @@
+{
+  "name": "ords-apexlang",
+  "displayName": "ORDS APEXlang",
+  "description": "Syntax highlighting, completion, hovers and validation for ORDS REST modules written in APEXlang (.apx), driven by grammar/ords-apexlang.ebnf",
+  "version": "0.1.0",
+  "publisher": "local",
+  "private": true,
+  "license": "UPL-1.0",
+  "engines": {
+    "vscode": "^1.140.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Linters"
+  ],
+  "main": "./out/src/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "languages": [
+      {
+        "id": "ords-apexlang",
+        "aliases": [
+          "ORDS APEXlang",
+          "apx"
+        ],
+        "extensions": [
+          ".apx"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "ords-apexlang",
+        "scopeName": "source.apx-ords",
+        "path": "./syntaxes/ords-apexlang.tmLanguage.json",
+        "embeddedLanguages": {
+          "meta.embedded.block.sql": "sql"
+        }
+      }
+    ],
+    "configuration": {
+      "title": "ORDS APEXlang",
+      "properties": {
+        "ordsApexlang.grammarPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Path to an `ords-apexlang.ebnf` to use instead of the bundled one, relative to the workspace folder. Saving that file reloads it, so grammar changes show up immediately."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "tsc -p . && node out/src/build.js",
+    "watch": "tsc -p . --watch",
+    "test": "npm run build && node --test \"out/test/**/*.test.js\"",
+    "package": "npm run build && vsce package --allow-missing-repository --skip-license"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "@types/vscode": "1.140.0",
+    "@vscode/vsce": "4.1.0",
+    "typescript": "7.0.2"
+  }
+}
