@@ -1,0 +1,20 @@
+// Split from hr_export.sql by ords2apx
+
+restRole hr_api_role (
+)
+
+restPrivilege hr.v1.priv (
+    label: HR API
+    description: Access to the HR employee API
+    roles: [@hr_api_role "SQL Developer"]
+    modules: [@hr.v1]
+    patterns: ["/hr/v1/employees/*"]
+)
+
+restOauthClient hr_reporting (
+    grantType: clientCredentials
+    owner: HR
+    description: Reporting service
+    supportEmail: ops@example.com
+    privileges: [@hr.v1.priv]
+)

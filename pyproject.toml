@@ -1,15 +1,49 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "ords2apx"
-version = "0.1.0"
-description = "Convert ORDS REST export scripts to APEXlang-style .apx files and back"
+version = "0.2.0"
+description = "Oracle REST Data Services modules as APEXlang (.ords.apx): convert ORDS exports, validate, deploy, and generate APEX REST Data Sources and OpenAPI"
+readme = "README.md"
+license = "UPL-1.0"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
 requires-python = ">=3.10"
+authors = [{ name = "the ords2apx contributors" }]
+keywords = ["oracle", "ords", "apex", "apexlang", "rest", "plsql", "openapi", "language-server"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Software Development :: Code Generators",
+]
+dependencies = []
+
+[project.optional-dependencies]
+lsp = ["pygls>=2.1,<3"]
+db = ["oracledb>=2.0"]
+all = ["pygls>=2.1,<3", "oracledb>=2.0"]
+dev = ["pygls>=2.1,<3", "oracledb>=2.0", "openapi-spec-validator>=0.7", "build>=1.2"]
 
 [project.scripts]
 ords2apx = "ords2apx.cli:main"
 
-[build-system]
-requires = ["setuptools>=68"]
-build-backend = "setuptools.build_meta"
+[project.urls]
+Homepage = "https://github.com/OWNER/ords2apx"
+Issues = "https://github.com/OWNER/ords2apx/issues"
+Changelog = "https://github.com/OWNER/ords2apx/blob/main/CHANGELOG.md"
 
 [tool.setuptools]
-packages = ["ords2apx"]
+packages = ["ords2apx", "ords2apx.grammar"]
+
+[tool.setuptools.package-data]
+"ords2apx.grammar" = ["*.ebnf"]

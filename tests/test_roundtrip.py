@@ -1,4 +1,3 @@
-import re
 import unittest
 from pathlib import Path
 
@@ -95,7 +94,7 @@ class RoundTrip(unittest.TestCase):
   ORDS.CREATE_PRIVILEGE_MAPPING(p_privilege_name => 'p', p_pattern => '/m/*');""")
         text = sql_to_apx(sql)
         self.assertIn('patterns: ["/m/*"]', text)
-        self.assertIn("roles: [r]", text)
+        self.assertIn("roles: [@r]", text)
         self.assert_round_trips(apx_to_sql(text))
 
     def test_output_is_stable(self):
@@ -104,35 +103,22 @@ class RoundTrip(unittest.TestCase):
 
 
 class Grammar(unittest.TestCase):
-    """grammar/ords-apexlang.ebnf is the specification; the converter must agree with it."""
+    """The converter's mapping comes from the grammar; check what the code adds agrees with it."""
 
-    def ebnf_components(self) -> dict:
-        text = (EXAMPLES.parent / "grammar" / "ords-apexlang.ebnf").read_text()
-        rule_kind = dict(re.findall(r'^<([\w-]+)> ::= "(\w+)" .*"\("', text, re.M))
-        components = {}
-        for rule, kind in rule_kind.items():
-            props = {}
-            # property rules of this component and its groups
-            for m in re.finditer(rf'^<{rule}(?:-[\w-]+)?-property> ::= (.*?)(?=^<|\Z)', text, re.M | re.S):
-                for alt in re.findall(r'"(\w+)" ":" <ws> (.*?) \(\* (-|p_\w+):', m.group(1)):
-                    key, value, param = alt
-                    values = tuple(re.findall(r'"(\w+)"', value))
-                    props[key] = (param, values)
-            proc = re.search(rf'\(\* {kind}\n\s+([\w.-]+);', text).group(1)
-            components[kind] = (proc, props)
-        return components
+    def test_source_type_names_match_grammar(self):
+        from ords2apx.model import SOURCE_TYPES
+        from ords2apx.schema import default_schema
+        values = default_schema().components["handler"].property("type", "source").values
+        self.assertEqual(set(values), set(SOURCE_TYPES.values()))
 
-    def test_converter_matches_grammar(self):
-        from ords2apx.model import RAW_KIND, SPECS
-        grammar = self.ebnf_components()
-        expected = {}
-        for spec in SPECS:
-            props = {p.key: (p.param, p.values) for p in spec.props}
-            if spec.kind == "handler":
-                props["plsqlCode"] = ("p_source", ())
-            expected[spec.kind] = (spec.proc, props)
-        expected[RAW_KIND] = ("-", {"code": ("-", ())})
-        self.assertEqual(grammar, expected)
+    def test_mapping_comes_from_grammar(self):
+        from ords2apx.model import specs
+        from ords2apx.schema import default_schema
+        s = specs(default_schema())
+        self.assertEqual(s["parameter"].proc, "ORDS.DEFINE_PARAMETER")
+        self.assertEqual(s["parameter"].parent_params, ("p_module_name", "p_pattern", "p_method"))
+        self.assertEqual([p.key for p in s["handler"].props_for_param("p_source")],
+                         ["sqlQuery", "plsqlCode", "javascriptCode"])
 
 
 class Errors(unittest.TestCase):

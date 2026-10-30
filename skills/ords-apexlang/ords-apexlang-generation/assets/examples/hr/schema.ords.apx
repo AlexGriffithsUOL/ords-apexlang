@@ -1,0 +1,18 @@
+// Split from hr_export.sql by ords2apx
+
+restSchema (
+    enabled: true
+    autoRestAuth: false
+    urlMapping {
+        type: basePath
+        pattern: hr
+    }
+)
+
+restEnabledObject DEPARTMENTS (
+    schema: HR
+    type: table
+    alias: departments
+    enabled: true
+    autoRestAuth: true
+)

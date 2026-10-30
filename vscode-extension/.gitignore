@@ -1,3 +1,6 @@
 node_modules/
 out/
 *.vsix
+# generated from the grammar by npm run build
+syntaxes/
+dist/

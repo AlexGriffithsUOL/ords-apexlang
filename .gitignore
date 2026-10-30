@@ -1,2 +1,7 @@
 __pycache__
 .DS_Store
+.venv/
+.test-db.env
+*.egg-info/
+dist/
+build/

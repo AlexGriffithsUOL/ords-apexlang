@@ -1,50 +1,43 @@
 # ORDS APEXlang for VS Code
 
-Editor support for `.apx` files written by [ords2apx](../README.md): ORDS REST
-modules in APEXlang syntax.
+Write Oracle REST Data Services APIs as APEXlang `.ords.apx` files, next to your APEX 26.1 application.
 
-Everything comes from [`grammar/ords-apexlang.ebnf`](../grammar/ords-apexlang.ebnf).
-The extension parses the grammar at startup and builds its component schema
-from it, and the build generates the highlighting grammar from the same file.
-To add a component or property, edit the EBNF.
+- **Highlighting**, including SQL, PL/SQL and JavaScript inside handler code.
+- **Diagnostics**: unknown components and properties with "did you mean", wrong nesting, bad values, duplicates, unresolved `@references` across every `.ords.apx` file in the workspace.
+- **Completion** that follows the cursor: components, unused properties, groups, enum values, `@references`.
+- **Hover** with each property's ORDS parameter, allowed values and default.
+- **Go to definition**, **find references**, **outline**, **workspace symbols**, **format document**.
+- **Commands** (palette and explorer menu):
+  - *Convert (ORDS script ⇄ .ords.apx)*
+  - *Split ORDS Export into Project Folder* / *Build Deployable ORDS Script from Folder*
+  - *Generate APEX REST Data Source* / *Generate OpenAPI Document*
+  - *Plan Changes Against Database* / *Deploy to Database* (run in a terminal so you see the plan and confirm)
 
-- **Highlighting.** Components, groups, property names and enum values the
-  grammar defines get their own colours, and anything else is visibly
-  different. ` ```sql ` and ` ```plsql ` blocks are highlighted as SQL.
-- **Completion.** Suggestions depend on where the cursor is: top-level
-  components; then a component's unused properties, groups and child
-  components; then a group's properties; then a property's values (enums,
-  `true`/`false`, and `@references` to roles and modules in the file).
-  Inserted as snippets with tab stops.
-- **Diagnostics.** Unknown components, properties and groups, with "Did you
-  mean" suggestions; wrong nesting; missing ids; bad enum, number and boolean
-  values; duplicates; unresolved `@references`; unclosed blocks. An unknown
-  camelCase property is a warning, because the converter passes it to ORDS
-  (`fooBar` → `p_foo_bar`).
-- **Hover.** Descriptions, ORDS procedure and parameter names, and allowed
-  values, all taken from the grammar's comments.
-- **Go to definition** on `@references`, **outline**, and **workspace symbols**.
+## Requirements
+
+The language features come from the `ords2apx` language server, a Python package:
+
+```sh
+pip install 'ords2apx[all]'
+```
+
+If it is installed in a virtualenv, set **ORDS APEXlang › Python Path** (`ordsApexlang.pythonPath`) to that environment's `python`.
+
+## Settings
+
+| Setting | |
+| --- | --- |
+| `ordsApexlang.pythonPath` | Python with ords2apx installed. Default `python3` (`python` on Windows). |
+| `ordsApexlang.grammarPath` | Use a different `ords-apexlang.ebnf`; saving it reloads the server. |
+| `ordsApexlang.ordsUrl` | Default schema URL for REST Data Source and OpenAPI generation. |
+
+Database commands read the connection from `ORDS2APX_DSN` in the terminal environment, or prompt for it.
 
 ## Developing
 
 ```sh
-npm install
-npm test          # tsc, regenerate syntaxes/ from the EBNF, run unit tests
-npm run package   # -> ords-apexlang-0.1.0.vsix
-code --install-extension ords-apexlang-0.1.0.vsix
+pip install -e '..[dev]'
+npm ci
+PYTHON=python3 npm test     # regenerates syntaxes/ from the grammar, compiles, tests highlighting with vscode-textmate
+npm run package             # -> ords-apexlang-<version>.vsix
 ```
-
-To work on the grammar with live feedback, set `ordsApexlang.grammarPath` to
-`grammar/ords-apexlang.ebnf` in this repository. Saving the EBNF then reloads
-completion, hovers and diagnostics. Highlighting changes need `npm run build`
-and a window reload.
-
-The language features in `src/analysis.ts` don't use the `vscode` module, so
-they are tested with plain `node:test`. `src/extension.ts` only wires them to
-VS Code.
-
-## Note
-
-Oracle's SQL Developer extension also opens `.apx` files, for APEX
-applications. If both are installed, choose this one per file with
-**Change Language Mode → ORDS APEXlang**, or set `files.associations`.

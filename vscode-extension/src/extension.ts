@@ -1,172 +1,158 @@
-import * as fs from "node:fs";
+// Thin client: the language features live in the Python language server
+// (`python -m ords2apx lsp`); this file starts it and adds commands that run
+// the ords2apx CLI.
+
+import { execFile } from "node:child_process";
 import * as path from "node:path";
 import * as vscode from "vscode";
-import { completions, contextAt, definition, hover, validate, walk } from "./analysis";
-import { ApxComponent, ApxDocument, parseApx, Span } from "./apxDocument";
-import { parseEbnf } from "./ebnf";
-import { buildSchema, Schema } from "./schema";
+import { LanguageClient, LanguageClientOptions, ServerOptions } from "vscode-languageclient/node";
 
 const LANGUAGE = "ords-apexlang";
+const INSTALL_HINT = "Install the language server with: pip install 'ords2apx[lsp]'";
 
-const COMPLETION_KINDS = {
-  component: vscode.CompletionItemKind.Class,
-  property: vscode.CompletionItemKind.Property,
-  group: vscode.CompletionItemKind.Module,
-  value: vscode.CompletionItemKind.EnumMember,
-  reference: vscode.CompletionItemKind.Reference,
-} as const;
+let client: LanguageClient | undefined;
 
-const toRange = (s: Span) => new vscode.Range(s.line, s.start, s.line, s.end);
+function config() {
+  return vscode.workspace.getConfiguration("ordsApexlang");
+}
 
-export function activate(context: vscode.ExtensionContext) {
-  const output = vscode.window.createOutputChannel("ORDS APEXlang");
-  const diagnostics = vscode.languages.createDiagnosticCollection(LANGUAGE);
-  let schema: Schema | undefined;
-  let grammarPath = "";
+/** The Python interpreter that has ords2apx installed. */
+function python(): string {
+  return config().get<string>("pythonPath")?.trim() || (process.platform === "win32" ? "python" : "python3");
+}
 
-  const parsed = new Map<string, { version: number; doc: ApxDocument }>();
-  const parse = (document: vscode.TextDocument): ApxDocument => {
-    const key = document.uri.toString();
-    const cached = parsed.get(key);
-    if (cached && cached.version === document.version) return cached.doc;
-    const doc = parseApx(document.getText());
-    parsed.set(key, { version: document.version, doc });
-    return doc;
+function grammarPath(): string | undefined {
+  const configured = config().get<string>("grammarPath")?.trim();
+  if (!configured) return undefined;
+  const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? "";
+  return path.resolve(folder, configured);
+}
+
+function runCli(args: string[], cwd?: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    execFile(python(), ["-m", "ords2apx", ...args], { cwd, maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+      if (err) {
+        const missing = /No module named ords2apx/.test(stderr) || (err as NodeJS.ErrnoException).code === "ENOENT";
+        reject(new Error(missing ? `ords2apx not found for ${python()}. ${INSTALL_HINT}` : stderr.trim() || err.message));
+      } else {
+        resolve(stdout);
+      }
+    });
+  });
+}
+
+async function startClient(context: vscode.ExtensionContext): Promise<void> {
+  const serverOptions: ServerOptions = { command: python(), args: ["-m", "ords2apx", "lsp"] };
+  const clientOptions: LanguageClientOptions = {
+    documentSelector: [{ language: LANGUAGE }],
+    initializationOptions: { grammarPath: grammarPath() },
+    synchronize: { fileEvents: vscode.workspace.createFileSystemWatcher("**/*.ords.apx") },
   };
+  client = new LanguageClient(LANGUAGE, "ORDS APEXlang", serverOptions, clientOptions);
+  try {
+    await client.start();
+  } catch (e) {
+    vscode.window.showErrorMessage(`ORDS APEXlang: the language server did not start (${(e as Error).message}). ${INSTALL_HINT}`);
+  }
+  context.subscriptions.push(client);
+}
 
-  const refresh = (document: vscode.TextDocument) => {
-    if (document.languageId !== LANGUAGE || !schema) return;
-    diagnostics.set(
-      document.uri,
-      validate(parse(document), schema).map((p) => {
-        const d = new vscode.Diagnostic(
-          toRange(p.span),
-          p.message,
-          p.severity === "error" ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning,
-        );
-        d.source = "ords-apexlang";
-        return d;
-      }),
-    );
-  };
+/** The file a command applies to: the explorer selection or the active editor. */
+function target(uri?: vscode.Uri): vscode.Uri | undefined {
+  const picked = uri ?? vscode.window.activeTextEditor?.document.uri;
+  if (!picked) vscode.window.showErrorMessage("ORDS APEXlang: open or select a file first.");
+  return picked;
+}
 
-  const loadSchema = () => {
-    const configured = vscode.workspace.getConfiguration("ordsApexlang").get<string>("grammarPath")?.trim();
-    const folder = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    grammarPath = configured
-      ? path.resolve(folder ?? "", configured)
-      : context.asAbsolutePath(path.join("grammar", "ords-apexlang.ebnf"));
+async function showOutput(content: string, language: string) {
+  const doc = await vscode.workspace.openTextDocument({ content, language });
+  await vscode.window.showTextDocument(doc, { preview: false });
+}
+
+function command(name: string, run: (uri?: vscode.Uri) => Promise<void>): vscode.Disposable {
+  return vscode.commands.registerCommand(`ordsApexlang.${name}`, async (uri?: vscode.Uri) => {
     try {
-      schema = buildSchema(parseEbnf(fs.readFileSync(grammarPath, "utf8")));
-      output.appendLine(`Loaded ${schema.components.size} components from ${grammarPath}`);
+      await vscode.window.withProgress({ location: vscode.ProgressLocation.Window, title: "ords2apx" }, () => run(uri));
     } catch (e) {
-      const message = `ORDS APEXlang: could not load grammar ${grammarPath}: ${(e as Error).message}`;
-      output.appendLine(message);
-      vscode.window.showErrorMessage(message + (schema ? " (keeping the previous grammar)" : ""));
+      vscode.window.showErrorMessage(`ORDS APEXlang: ${(e as Error).message}`);
     }
-    vscode.workspace.textDocuments.forEach(refresh);
-  };
+  });
+}
 
-  loadSchema();
+async function askUrl(prompt: string): Promise<string | undefined> {
+  const remembered = config().get<string>("ordsUrl") || undefined;
+  return vscode.window.showInputBox({ prompt, value: remembered, placeHolder: "https://host/ords/hr/" });
+}
 
-  const timers = new Map<string, NodeJS.Timeout>();
+function inTerminal(args: string[]) {
+  const terminal = vscode.window.createTerminal("ords2apx");
+  const quote = (s: string) => (/^[\w./:@=-]+$/.test(s) ? s : `"${s.replace(/(["\\$`])/g, "\\$1")}"`);
+  terminal.show();
+  terminal.sendText([python(), "-m", "ords2apx", ...args].map(quote).join(" "));
+}
+
+export async function activate(context: vscode.ExtensionContext) {
+  await startClient(context);
+
   context.subscriptions.push(
-    output,
-    diagnostics,
-    vscode.workspace.onDidOpenTextDocument(refresh),
-    vscode.workspace.onDidChangeTextDocument((e) => {
-      const key = e.document.uri.toString();
-      clearTimeout(timers.get(key));
-      timers.set(key, setTimeout(() => refresh(e.document), 150));
+    command("convert", async (uri) => {
+      const file = target(uri);
+      if (!file) return;
+      await runCli([file.fsPath], path.dirname(file.fsPath));
+      const result = file.fsPath.endsWith(".ords.apx")
+        ? file.fsPath.slice(0, -".ords.apx".length) + ".sql"
+        : file.fsPath.replace(/\.[^.]+$/, "") + ".ords.apx";
+      await vscode.window.showTextDocument(vscode.Uri.file(result));
     }),
-    vscode.workspace.onDidCloseTextDocument((d) => {
-      diagnostics.delete(d.uri);
-      parsed.delete(d.uri.toString());
+    command("split", async (uri) => {
+      const file = target(uri);
+      if (!file) return;
+      const dir = await vscode.window.showInputBox({
+        prompt: "Folder for the .ords.apx project",
+        value: path.join(path.dirname(file.fsPath), "rest"),
+      });
+      if (!dir) return;
+      const summary = await runCli(["split", file.fsPath, "-d", dir]);
+      vscode.window.showInformationMessage(summary.trim() || `Split into ${dir}`);
     }),
-    vscode.workspace.onDidSaveTextDocument((d) => {
-      if (path.resolve(d.uri.fsPath) === path.resolve(grammarPath)) loadSchema();
+    command("build", async (uri) => {
+      const folder = uri ?? (await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectFiles: false }))?.[0];
+      if (!folder) return;
+      await showOutput(await runCli(["build", folder.fsPath, "-o", "-"]), "sql");
     }),
-    vscode.workspace.onDidChangeConfiguration((e) => {
-      if (e.affectsConfiguration("ordsApexlang.grammarPath")) loadSchema();
+    command("restSource", async (uri) => {
+      const file = target(uri);
+      const url = file && (await askUrl("ORDS URL of the schema, used for the APEX REST Data Source Server"));
+      if (!file || !url) return;
+      await showOutput(await runCli(["rest-source", file.fsPath, "--url", url, "-o", "-"]), "plaintext");
     }),
-
-    vscode.languages.registerCompletionItemProvider(
-      LANGUAGE,
-      {
-        provideCompletionItems(document, position, _token, ctx) {
-          if (!schema) return undefined;
-          const doc = parse(document);
-          // after a space or '[' only complete values, not whole properties
-          if (ctx.triggerKind === vscode.CompletionTriggerKind.TriggerCharacter && contextAt(doc, position.line, position.character).type !== "value") {
-            return undefined;
-          }
-          const word = document.getWordRangeAtPosition(position, /@?[A-Za-z0-9_][A-Za-z0-9_.\-]*/);
-          return completions(doc, schema, position.line, position.character).map((c) => {
-            const item = new vscode.CompletionItem(c.label, COMPLETION_KINDS[c.kind]);
-            item.insertText = new vscode.SnippetString(c.insertText);
-            item.detail = c.detail;
-            if (c.documentation) item.documentation = new vscode.MarkdownString(c.documentation);
-            item.sortText = c.sortText;
-            if (word) item.range = word;
-            return item;
-          });
-        },
-      },
-      " ",
-      "@",
-      "[",
-    ),
-
-    vscode.languages.registerHoverProvider(LANGUAGE, {
-      provideHover(document, position) {
-        if (!schema) return undefined;
-        const h = hover(parse(document), schema, position.line, position.character);
-        return h && new vscode.Hover(new vscode.MarkdownString(h.markdown), toRange(h.span));
-      },
+    command("openapi", async (uri) => {
+      const file = target(uri);
+      const url = file && (await askUrl("ORDS URL of the schema, used as the OpenAPI server"));
+      if (!file || !url) return;
+      await showOutput(await runCli(["openapi", file.fsPath, "--url", url, "-o", "-"]), "json");
     }),
-
-    vscode.languages.registerDefinitionProvider(LANGUAGE, {
-      provideDefinition(document, position) {
-        const target = definition(parse(document), position.line, position.character);
-        return target && new vscode.Location(document.uri, toRange(target.idSpan ?? target.kindSpan));
-      },
+    command("plan", async (uri) => {
+      const folder = uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (folder) inTerminal(["plan", folder.fsPath]);
     }),
-
-    vscode.languages.registerDocumentSymbolProvider(LANGUAGE, {
-      provideDocumentSymbols(document) {
-        const doc = parse(document);
-        const lastLine = document.lineCount - 1;
-        const symbol = (c: ApxComponent): vscode.DocumentSymbol => {
-          const end = Math.min(c.endLine, lastLine);
-          const s = new vscode.DocumentSymbol(
-            c.id ?? c.kind,
-            c.id !== undefined ? c.kind : "",
-            c.children.length ? vscode.SymbolKind.Namespace : vscode.SymbolKind.Object,
-            new vscode.Range(c.startLine, 0, end, document.lineAt(end).text.length),
-            toRange(c.idSpan ?? c.kindSpan),
-          );
-          s.children = c.children.map(symbol);
-          return s;
-        };
-        return doc.components.map(symbol);
-      },
+    command("deploy", async (uri) => {
+      const folder = uri ?? vscode.workspace.workspaceFolders?.[0]?.uri;
+      if (folder) inTerminal(["deploy", folder.fsPath]);
     }),
-
-    vscode.languages.registerWorkspaceSymbolProvider({
-      provideWorkspaceSymbols(query) {
-        const out: vscode.SymbolInformation[] = [];
-        for (const document of vscode.workspace.textDocuments) {
-          if (document.languageId !== LANGUAGE) continue;
-          for (const c of walk(parse(document).components)) {
-            if (c.id === undefined || !c.id.toLowerCase().includes(query.toLowerCase())) continue;
-            out.push(new vscode.SymbolInformation(c.id, vscode.SymbolKind.Object, c.kind,
-              new vscode.Location(document.uri, toRange(c.idSpan ?? c.kindSpan))));
-          }
-        }
-        return out;
-      },
+    command("restartServer", async () => {
+      await client?.stop();
+      await startClient(context);
+    }),
+    vscode.workspace.onDidChangeConfiguration(async (e) => {
+      if (e.affectsConfiguration("ordsApexlang.pythonPath") || e.affectsConfiguration("ordsApexlang.grammarPath")) {
+        await client?.stop();
+        await startClient(context);
+      }
     }),
   );
 }
 
-export function deactivate() {}
+export async function deactivate() {
+  await client?.stop();
+}

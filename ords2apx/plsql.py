@@ -332,8 +332,19 @@ def _parse_block(block: str) -> list[Statement]:
         end -= 1
     if not _is_kw(toks[end], "END"):
         raise PlsqlSyntaxError("block does not finish with END;")
+    body = toks[i + 1:end]
+    # an export ends with EXCEPTION WHEN OTHERS THEN ROLLBACK; RAISE; which is not content
+    depth = 0
+    for n, t in enumerate(body):
+        if _is_kw(t, *OPENERS) and not (n and _is_kw(body[n - 1], "END")):
+            depth += 1
+        elif _is_kw(t, "END"):
+            depth -= 1
+        elif depth == 0 and _is_kw(t, "EXCEPTION"):
+            body = body[:n]
+            break
     out: list[Statement] = []
-    for stmt in _split_statements(toks[i + 1:end]):
+    for stmt in _split_statements(body):
         text = block[stmt[0].start:stmt[-1].end]
         result = _interpret(stmt, text, arrays)
         if result is not None:

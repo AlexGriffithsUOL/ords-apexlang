@@ -1,19 +1,30 @@
 {
   "name": "ords-apexlang",
   "displayName": "ORDS APEXlang",
-  "description": "Syntax highlighting, completion, hovers and validation for ORDS REST modules written in APEXlang (.apx), driven by grammar/ords-apexlang.ebnf",
-  "version": "0.1.0",
-  "publisher": "local",
-  "private": true,
+  "description": "Write Oracle REST Data Services modules as APEXlang (.ords.apx): highlighting, completion, validation, and conversion to and from ORDS scripts",
+  "version": "0.2.0",
+  "publisher": "ords2apx",
   "license": "UPL-1.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/OWNER/ords2apx.git"
+  },
   "engines": {
     "vscode": "^1.140.0"
   },
   "categories": [
     "Programming Languages",
-    "Linters"
+    "Linters",
+    "Formatters"
   ],
-  "main": "./out/src/extension.js",
+  "keywords": [
+    "oracle",
+    "ords",
+    "apex",
+    "apexlang",
+    "rest"
+  ],
+  "main": "./dist/extension.js",
   "activationEvents": [],
   "contributes": {
     "languages": [
@@ -21,10 +32,10 @@
         "id": "ords-apexlang",
         "aliases": [
           "ORDS APEXlang",
-          "apx"
+          "ords-apx"
         ],
-        "extensions": [
-          ".apx"
+        "filenamePatterns": [
+          "*.ords.apx"
         ],
         "configuration": "./language-configuration.json"
       }
@@ -32,34 +43,135 @@
     "grammars": [
       {
         "language": "ords-apexlang",
-        "scopeName": "source.apx-ords",
+        "scopeName": "source.ords-apx",
         "path": "./syntaxes/ords-apexlang.tmLanguage.json",
         "embeddedLanguages": {
-          "meta.embedded.block.sql": "sql"
+          "meta.embedded.block.sql": "sql",
+          "meta.embedded.block.javascript": "javascript"
         }
       }
     ],
+    "commands": [
+      {
+        "command": "ordsApexlang.convert",
+        "title": "Convert (ORDS script ⇄ .ords.apx)",
+        "category": "ORDS APEXlang"
+      },
+      {
+        "command": "ordsApexlang.split",
+        "title": "Split ORDS Export into Project Folder",
+        "category": "ORDS APEXlang"
+      },
+      {
+        "command": "ordsApexlang.build",
+        "title": "Build Deployable ORDS Script from Folder",
+        "category": "ORDS APEXlang"
+      },
+      {
+        "command": "ordsApexlang.restSource",
+        "title": "Generate APEX REST Data Source",
+        "category": "ORDS APEXlang"
+      },
+      {
+        "command": "ordsApexlang.openapi",
+        "title": "Generate OpenAPI Document",
+        "category": "ORDS APEXlang"
+      },
+      {
+        "command": "ordsApexlang.plan",
+        "title": "Plan Changes Against Database",
+        "category": "ORDS APEXlang"
+      },
+      {
+        "command": "ordsApexlang.deploy",
+        "title": "Deploy to Database",
+        "category": "ORDS APEXlang"
+      },
+      {
+        "command": "ordsApexlang.restartServer",
+        "title": "Restart Language Server",
+        "category": "ORDS APEXlang"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "ordsApexlang.convert",
+          "when": "resourceFilename =~ /\\.(ords\\.apx|sql)$/",
+          "group": "ords2apx@1"
+        },
+        {
+          "command": "ordsApexlang.split",
+          "when": "resourceExtname == .sql",
+          "group": "ords2apx@2"
+        },
+        {
+          "command": "ordsApexlang.build",
+          "when": "explorerResourceIsFolder",
+          "group": "ords2apx@3"
+        },
+        {
+          "command": "ordsApexlang.plan",
+          "when": "explorerResourceIsFolder",
+          "group": "ords2apx@4"
+        },
+        {
+          "command": "ordsApexlang.restSource",
+          "when": "resourceFilename =~ /\\.ords\\.apx$/ || explorerResourceIsFolder",
+          "group": "ords2apx@5"
+        },
+        {
+          "command": "ordsApexlang.openapi",
+          "when": "resourceFilename =~ /\\.ords\\.apx$/ || explorerResourceIsFolder",
+          "group": "ords2apx@6"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "ordsApexlang.convert",
+          "when": "resourceFilename =~ /\\.(ords\\.apx|sql)$/"
+        }
+      ]
+    },
     "configuration": {
       "title": "ORDS APEXlang",
       "properties": {
+        "ordsApexlang.pythonPath": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Python interpreter with `ords2apx[lsp]` installed. Defaults to `python3` (`python` on Windows)."
+        },
         "ordsApexlang.grammarPath": {
           "type": "string",
           "default": "",
-          "markdownDescription": "Path to an `ords-apexlang.ebnf` to use instead of the bundled one, relative to the workspace folder. Saving that file reloads it, so grammar changes show up immediately."
+          "markdownDescription": "An `ords-apexlang.ebnf` to use instead of the one bundled with ords2apx, relative to the workspace folder. Saving it reloads the language server's grammar."
+        },
+        "ordsApexlang.ordsUrl": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Default ORDS URL of your schema (e.g. `https://host/ords/hr/`) for generating REST Data Sources and OpenAPI documents."
         }
       }
     }
   },
   "scripts": {
-    "build": "tsc -p . && node out/src/build.js",
+    "syntax": "cd .. && ${PYTHON:-python3} -m ords2apx textmate > vscode-extension/syntaxes/ords-apexlang.tmLanguage.json",
+    "build": "npm run syntax && tsc -p . && npm run bundle",
+    "bundle": "esbuild src/extension.ts --bundle --platform=node --format=cjs --target=node20 --external:vscode --minify --sourcemap --outfile=dist/extension.js",
     "watch": "tsc -p . --watch",
     "test": "npm run build && node --test \"out/test/**/*.test.js\"",
-    "package": "npm run build && vsce package --allow-missing-repository --skip-license"
+    "package": "npm run build && vsce package"
+  },
+  "dependencies": {
+    "vscode-languageclient": "11.0.0"
   },
   "devDependencies": {
     "@types/node": "22.20.5",
     "@types/vscode": "1.140.0",
     "@vscode/vsce": "4.1.0",
-    "typescript": "7.0.2"
+    "esbuild": "0.28.2",
+    "typescript": "7.0.2",
+    "vscode-oniguruma": "2.0.1",
+    "vscode-textmate": "9.3.2"
   }
 }
